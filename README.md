@@ -9,3 +9,6 @@ Some of the key technical achievements include:
 * Estimated Departure Algorithm – best guest based on bus GPS location data.
 
 The project is now at the prototype stage of development and is ready for beta testing.
+
+The original project repo can be found here:
+https://github.com/Deakin-SIT374-BusTracker/BusTrackerWeb.git
