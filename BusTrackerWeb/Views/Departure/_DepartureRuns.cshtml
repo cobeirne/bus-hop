@@ -1,0 +1,22 @@
+﻿@model  IEnumerable<BusTrackerWeb.Models.DepartureModel>
+
+@* Render the departures in a table. *@
+<div class="panel panel-default search-table">
+    <table id="journeyTable" class="table table-striped">
+        <tr>
+            <th>Your Stop</th>
+            <th>Departure Time</th>
+            <th>Link</th>
+        </tr>
+
+        @foreach (var departure in Model)
+        {
+            <tr>
+                <td>@Html.DisplayFor(modelItem => departure.Stop.StopName)</td>
+                <td>@Html.DisplayFor(modelItem => departure.ScheduledDeparture)</td>
+                <td>@Html.ActionLink("Select", "Index", "Journey", new { runId = departure.RunId, routeId = departure.RouteId, stopId = departure.Stop.StopId }, new { @class = "btn btn-default" })</td>
+            </tr>
+        }
+    </table>
+</div>
+

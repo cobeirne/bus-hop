@@ -1,0 +1,152 @@
+﻿@{ 
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+@* Render large Bus Hop Logo. *@
+<div style="margin-top:1.5em">
+    <img src="~/Content/Images/bushop-logo.png" class="img-responsive" style="margin:0 auto; width:12em" />
+</div>
+
+<div>
+    <div class="search-title">When would you like to leave?</div>
+</div>
+
+<div style="margin-top:1.5em">
+    <div class="departure-prompt">Your current location</div>
+</div>
+
+@* Render users' current address. *@
+<div id="geo-address" style="margin-top:1.5em">
+    <div class="departure-address" id="user-location"></div>
+    <br />
+    <a class="departure-prompt" onclick="showManualAddress()">Change your location</a>
+</div>
+
+@* Manual Auto Address - Hidden by default *@
+<div id="manual-address" hidden="hidden">
+    <div class="form-group">
+        <div id="address-hints">
+            <input id="autocomplete" placeholder="Enter your address" type="text" class="form-control departure-input" />
+        </div>
+    </div>
+    <a class="departure-prompt" onclick="showGeoAddress()">Find my location</a>
+</div>
+
+@* Render departure results here. *@
+        <div id="departure-runs"></div>
+
+    @section scripts {
+        @* Include Google Map Javascript Package *@
+        <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCqZFelSFhnk3JDbFVx7qovf8IIG1ZViVs&libraries=places"></script>
+
+        <script>
+        /*
+        Function: document.Ready()
+        Jquery function called after document has been rendered.
+        */
+        $(document).ready(function () {
+            getGeoLocation();
+        });
+
+
+        /*
+        Function: getGeoLocation()
+        Get the users' current location and post the coordinates to Departures
+        Controller which will return the location address retreived from the
+        Google API.
+        Once the user location is obtained get departures for the closest stop.
+        */
+        function getGeoLocation() {
+            // Check for browser geolocation support.
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    // Pass the user coordinates to the Departures Controller and display the user address.
+                    $.get("/Departure/GetAddress", { latitude: position.coords.latitude, longitude: position.coords.longitude }, function (response) {
+                        $("#user-location").html(response);
+                    });
+
+                    // Get all departures for the closest stop on route.
+                    getDepartures(position.coords.latitude, position.coords.longitude);
+                });
+            } else {
+                console.log("Browser doesn't support geolocation!");
+                showManualAddress();
+            }
+        };
+
+
+        /*
+        Function: getDepartures()
+        Post route parameters and user geolocation to retreive a departures
+        in a partial view.
+        */
+        function getDepartures(geolatitude, geolongitude) {
+            $.get("/Departure/GetDepartures", { routeId: @ViewBag.RouteId, directionId: @ViewBag.DirectionId, latitude: geolatitude, longitude: geolongitude }, function (response) {
+                $("#departure-runs").html(response);
+            });
+        };
+
+
+        /*
+        Function: showManualAddress()
+        Hide the Reverse Geolocation address and show the Google Auto Address
+        Input box.
+        */
+        function showManualAddress()
+        {
+            $('#geo-address').hide();
+            $('#manual-address').show();
+            $('#autocomplete').val("");
+        }
+
+
+        /*
+        Function: showGeoAddress()
+        Hide the Google Auto Address and show the Reverse Geolocation address.
+        */
+        function showGeoAddress() {
+            $('#geo-address').show();
+            $('#manual-address').hide();
+            getGeoLocation();
+        }
+
+        /*
+        Function: initAutocomplete()
+        Initialise the Google Auto Address Input Box.
+        */
+        function initAutocomplete() {
+            console.log("Init Autocompete.");
+            // Create the autocomplete object, restricting the search to
+            // geographical location types.
+            var options = {
+                types: ["geocode"],
+                componentRestrictions: { country: "AU" }
+            };
+            autocomplete = new google.maps.places.Autocomplete((document.getElementById('autocomplete')), options);
+
+            // When the user selects an address from the dropdown, populate the
+            // address fields in the form.
+            autocomplete.addListener('place_changed', getAutoAddressLocation);
+        }
+
+        initAutocomplete();
+
+        /*
+        Function: getAutoAddressLocation()
+        When a new Auto Address is selected, pass the geo coordinates to the
+        controller and get departures for the closest stop.
+        */
+        function getAutoAddressLocation() {
+            console.log("Get Auto Addres Location.");
+
+            // Get the place details from the autocomplete object.
+            var place = autocomplete.getPlace();
+            var addressLatitude = place.geometry.location.lat;
+            var addressLongitude = place.geometry.location.lng;
+
+            // Get all departures for the closest stop on route.
+            getDepartures(addressLatitude, addressLongitude);
+        }
+
+        </script>
+    }

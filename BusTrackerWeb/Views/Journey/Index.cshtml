@@ -1,0 +1,551 @@
+﻿@model  BusTrackerWeb.Models.DepartureViewModel
+
+@{ 
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="journey-header">
+    <h1><img style="max-width:50px; margin-top: -4px; margin-right: 10px; float:left;" src="~/Content/Images/bushop-logo.png">Your Journey</h1>
+</div>
+
+<div style="margin-top:2em">
+    <div class="row" style="width: 100%">
+        <div class="col-md-6">
+            @* Render departure dashboard.*@
+            <div id="departure-dashboard"></div>
+            
+
+            @* Render departure results here.*@
+            <div id="departure-stops"></div>
+
+        </div>
+        <div class="col-md-6">
+            <div id="map_canvas" style="min-height:40em; width:100%"></div>
+            <br />
+
+            <div class="panel panel-default">
+                <div class="panel-heading" style="text-align:left">
+                    <h3 class="panel-title">Test Panel</h3>
+                </div>
+                <div class="journey-testing">
+                    <div class="row journey-testing-row">
+                        <div class="col-md-4">
+                            <label>Operating Mode: </label>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="btn-group dropdown">
+                                <button id="user-dropdown" type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    Passenger <span class="caret"></span>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a href="#" id="user-dropdown-passenger-action">Passenger</a></li>
+                                    <li><a href="#" id="user-dropdown-bus-action">Bus Driver</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row journey-testing-row">
+                        <div class="col-md-4">
+                            <label>Passenger Location: </label>
+                        </div>
+                        <div class="col-md-8">
+                            <form class="form-inline">
+                                <div class="form-group">
+                                    <div class="btn-group dropdown">
+                                        <button id="passenger-location-dropdown" type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                            Simulate <span class="caret"></span>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a href="#" id="passenger-location-dropdown-gps-action">GPS</a></li>
+                                            <li><a href="#" id="passenger-location-dropdown-simulate-action">Simulate</a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="row journey-testing-row">
+                        <div class="col-md-4">
+                            <label>Bus Location: </label>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="btn-group dropdown">
+                                <button id="bus-location-dropdown" type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    Simulate <span class="caret"></span>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a href="#" id="bus-location-dropdown-gps-action">GPS</a></li>
+                                    <li><a href="#" id="bus-location-dropdown-simulate-action">Simulate</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="passenger-tracking-row" class="row journey-testing-row">
+                        <div class="col-md-4">
+                            <label>Passenger Tracking: </label>
+                        </div>
+                        <div class="col-md-8">
+                            <form class="form-inline">
+                                <div class="form-group">
+                                    <button id="passenger-start-button" type="button" class="btn btn-success" onclick="startPassengerAction()">Jump On</button>
+                                    <button id="passenger-finish-button" type="button" class="btn btn-danger" onclick="stopPassengerAction()">Jump Off</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="bus-tracking-row" class="row journey-testing-row" hidden="hidden">
+                        <div class="col-md-4">
+                            <label>Bus Tracking: </label>
+                        </div>
+                        <div class="col-md-8">
+                            <form class="form-inline">
+                                <div class="form-group">
+                                    <button id="bus-start-button" type="button" class="btn btn-success" onclick="startBusAction()">Start Run</button>
+                                    <button id="bus-finish-button" type="button" class="btn btn-danger" onclick="stopBusAction()">End Run</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@section scripts {
+    @* Include Google Map Javascript Package *@
+    <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCqZFelSFhnk3JDbFVx7qovf8IIG1ZViVs&libraries=geometry"></script>
+
+    <script type="text/javascript">
+
+        //Globals
+        var userIsDriver = false;
+        var busSimulationEnabled = true;
+        var passengerSimulationEnabled = true;
+        var passengerOnBoard = false;
+
+        var busSimulatorInterval = null;
+        var userSimulatorInterval = null;
+        var putBusInterval = null;
+        var busLocation = null;
+
+        var departures = @Html.Raw(Json.Encode(@ViewBag.Departures));
+        var userLocation = new google.maps.LatLng(departures[0].Stop.StopLatitude, departures[0].Stop.StopLongitude);
+
+        /*
+        Function: document.Ready()
+        Jquery function called after document has been rendered.
+        */
+        $(document).ready(function () {
+            initUserDropDown();
+            initPassengerDropDown();
+            initBusDropDown();
+
+            postJourneyDashboard();
+            postJourneyStops();
+            updateDepartures();
+            setInterval(updateDepartures, 15000);
+
+            startBusSimulation();
+            startPassengerSimulation();
+        });
+
+        function initUserDropDown() {
+            $("#user-dropdown-passenger-action").click(function (e) {
+                $('#user-dropdown').html('Passenger <span class="caret"></span>');
+
+                userIsDriver = false;
+                $("#bus-tracking-row").hide();
+                $("#passenger-tracking-row").show();
+            });
+
+            $("#user-dropdown-bus-action").click(function (e) {
+                $('#user-dropdown').html('Bus Driver <span class="caret"></span>');
+
+                userIsDriver = true;
+                $("#bus-tracking-row").show();
+                $("#passenger-tracking-row").hide();
+            });
+        }
+
+        function initPassengerDropDown() {
+            $("#passenger-location-dropdown-gps-action").click(function (e) {
+                $('#passenger-location-dropdown').html('GPS <span class="caret"></span>');
+
+                passengerSimulationEnabled = false;
+                clearInterval(userSimulatorInterval);
+            });
+
+            $("#passenger-location-dropdown-simulate-action").click(function (e) {
+                $('#passenger-location-dropdown').html('Simulate <span class="caret"></span>');
+
+                startPassengerSimulation();
+            });
+        }
+
+        function initBusDropDown() {
+            $("#bus-location-dropdown-gps-action").click(function (e) {
+                $('#bus-location-dropdown').html('GPS <span class="caret"></span>');
+
+                busSimulationEnabled = false;
+                clearInterval(busSimulatorInterval);
+            });
+
+            $("#bus-location-dropdown-simulate-action").click(function (e) {
+                $('#bus-location-dropdown').html('Simulate <span class="caret"></span>');
+
+                startBusSimulation();
+            });
+        }
+
+        function startPassengerSimulation() {
+            passengerSimulationEnabled = true;
+            userSimulatorInterval = setInterval(simulateUserLocation, 5000);
+        }
+
+        function startBusSimulation() {
+            busSimulationEnabled = true;
+            simulateBusLocation();
+            busSimulatorInterval = setInterval(simulateBusLocation, 5000);
+        }
+
+        /*
+        Function: postJourneyStops()
+        Post a collection of stops to the controller and intialise a callback
+        to render the response as a partial view.
+
+        This function is called to periodically update the departure times.
+        */
+        function postJourneyStops() {
+
+            // Build a new array of stops from the departure collection.
+            var stops = []
+            for (var i = 0; i < departures.length; i++) {
+                var sName = departures[i].Stop.StopName;
+                var sDepartureTime = new Date(parseInt(departures[i].EstimatedDeparture.substr(6)));;
+                stops[i] = { stopName: sName, departureTime: sDepartureTime }
+            }
+
+            // Post the stops to the controller and initialise a callback to
+            // render the response as a partial view.
+            $.ajax({
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'text',
+                type: 'POST',
+                url: '/Journey/GetStops',
+                data: JSON.stringify(stops),
+                success: function (response) {
+                    postStopsCallback(response)
+                },
+                error: function (textStatus, errorThrown) {
+                    console.log('Error on GetStops Post');
+                }
+            });
+        }
+
+        /*
+        Function: postStopsCallback()
+        This call back function updates the stops table with the latest departure
+        times.
+        */
+        function postStopsCallback(response) {
+            $("#departure-stops").html(response);
+        }
+
+
+        function postJourneyDashboard() {
+
+            // Build a new array of stops from the departure collection.
+            var journeyStops = []
+            for (var i = 0; i < departures.length; i++) {
+                var stopId = departures[i].Stop.StopId;
+                var sName = departures[i].Stop.StopName;
+                var sDepartureTime = new Date(parseInt(departures[i].EstimatedDeparture.substr(6)));;
+                var sLatitude = departures[i].Stop.StopLatitude;
+                var sLongitude = departures[i].Stop.StopLongitude;
+                journeyStops[i] = { stopId: stopId, stopName: sName, departureTime: sDepartureTime, StopLatitude: sLatitude, StopLongitude: sLongitude }
+            }
+
+            // Get the users current location.
+            var userLatitude = userLocation.lat();
+            var userLogitude = userLocation.lng();
+
+            // Post the stops to the controller and initialise a callback to
+            // render the response as a partial view.
+            $.ajax({
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'text',
+                type: 'POST',
+                url: '/Journey/GetDashboard',
+                data: JSON.stringify({ 'stops': journeyStops, 'stopId': @ViewBag.StopId, 'userLatitude': userLatitude, 'userLongitude': userLogitude}),
+                success: function (response) {
+                    postDashboardCallback(response)
+                },
+                error: function (textStatus, errorThrown) {
+                    console.log('Error on GetDashboard Post');
+                }
+            });
+        }
+
+        /*
+        Function: postDashboardCallback()
+        This call back function updates the stops table with the latest departure
+        times.
+        */
+        function postDashboardCallback(response) {
+            $("#departure-dashboard").html(response);
+        }
+
+
+            /*
+        Function: initGoogleMap()
+        Render a Google Map and render the bus route markers and polyline.
+        */
+        function initGoogleMap() {
+            // Find the map center coordinates.
+            var centerIndex = Math.round(departures.length / 2)
+            var centerLocation = new google.maps.LatLng(departures[centerIndex].Stop.StopLatitude, departures[centerIndex].Stop.StopLatitude);
+
+            // Set map options.
+            var options = {
+                zoom: 14,
+                center: centerLocation,
+                mapTypeId: google.maps.MapTypeId.ROADMAP,
+                icon: '/Content/Images/stop.png'
+            };
+
+            // Initialise map objects.
+            var map = new google.maps.Map(document.getElementById("map_canvas"), options);
+            var bounds = new google.maps.LatLngBounds();
+            var infowindow = new google.maps.InfoWindow({ content: "holding..." });
+            var stopIcon = {
+                url: '/Content/Images/stop.png',
+                scaledSize: new google.maps.Size(25, 25),
+            };
+
+            // Iterate through each departures and create a new map marker with info
+            // window.
+            for (var i = 0; i < departures.length; i++) {
+                // Create Marker.
+                var newlocation = new google.maps.LatLng(departures[i].Stop.StopLatitude, departures[i].Stop.StopLongitude);
+
+                // Format departure date.
+                var departureTime = new Date(parseInt(departures[i].ScheduledDeparture.replace('/Date(', '')));
+                var datestring = ("0" + departureTime.getDate()).slice(-2) + "-" + ("0" + (departureTime.getMonth() + 1)).slice(-2) + "-" +
+                    departureTime.getFullYear() + " " + ("0" + departureTime.getHours()).slice(-2) + ":" + ("0" + departureTime.getMinutes()).slice(-2);
+
+                var newMarker = new google.maps.Marker({
+                    position: newlocation,
+                    map: map,
+                    title: departures[i].Stop.StopName,
+                    icon: stopIcon,
+                    html: '<h4>' + departures[i].Stop.StopName + '</h4><p>' + datestring + '</p>',
+                });
+
+                // Add Info Window to marker.
+                google.maps.event.addListener(newMarker, 'click', function () {
+                    infowindow.setContent(this.html);
+                    infowindow.open(map, this);
+                });
+
+                // Adjusted bounds of map based on new marker.
+                bounds.extend(newMarker.getPosition());
+            }
+
+            // Extend the map margins to fit all stops.
+            map.fitBounds(bounds);
+
+
+            // Render the collection of polylines returned by the Google Directions
+            // API.
+            var encodedPolyline = @Html.Raw(Json.Encode(@ViewBag.EncodePolylines));
+            for (var i = 0; i < encodedPolyline.length; i++) {
+                var decodedPolyline = google.maps.geometry.encoding.decodePath(encodedPolyline[i]);
+                var drivePath = new google.maps.Polyline({
+                    path: decodedPolyline,
+                    geodesic: true,
+                    strokeColor: '#FF0000',
+                    strokeOpacity: 1.0,
+                    strokeWeight: 2
+                });
+
+                drivePath.setMap(map);
+            }
+
+
+            // Asyncronoulsy move the bus marker along the route.
+            var busPosition = new google.maps.LatLng(departures[0].Stop.StopLatitude, departures[0].Stop.StopLongitude);
+            var busMarker = new google.maps.Marker({
+                position: busPosition,
+                map: map,
+                icon: '/Content/Images/bus.png'
+            });
+
+            moveBusMarker(map, busMarker);
+
+            // Asyncronoulsy move the user marker along the route.
+            if (!userIsDriver) {
+                var userPosition = new google.maps.LatLng(departures[0].Stop.StopLatitude, departures[0].Stop.StopLongitude);
+                var userIcon = {
+                    url: '/Content/Images/user-pin.png',
+                    scaledSize: new google.maps.Size(40, 40),
+                };
+
+                var userMarker = new google.maps.Marker({
+                    position: userPosition,
+                    map: map,
+                    icon: userIcon
+                });
+
+                moveUserMarker(map, userMarker);
+            }
+        }
+
+        initGoogleMap();
+
+
+        /*
+        Function: moveMarker()
+        Periodically get the current bus on route location and move the bus map
+        marker.  Also re-center the map to the new bus location.
+        */
+        function moveBusMarker(map, marker) {
+            setInterval(function () {
+                $.get("/api/Bus/GetBusOnRouteLocation", { routeId: @ViewBag.RouteId, busRego: 'SIM001' }, function (response) {
+                    if (response.length > 0) {
+                        busLocation = new google.maps.LatLng(response[0].BusLatitude, response[0].BusLongitude);
+                        marker.setTitle(response[0].BusRegoNumber);
+
+                        marker.setPosition(busLocation);
+
+                        if (userIsDriver) {
+                            map.setZoom(15);
+                            map.setCenter(busLocation);
+                        }
+
+                        console.log('GET Bus Latitude: ' + response[0].BusLatitude + '   Bus Longitude: ' + response[0].BusLongitude);
+                    }
+                });
+            }, 5000);
+        }
+
+
+        function moveUserMarker(map, marker) {
+            setInterval(function () {
+                // If simulation is not enabled get the current user geolocation.
+                if (!passengerSimulationEnabled) {
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(function (position) {
+                            userLocation = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
+                        });
+                    } else {
+                        Console.log("Geolocation is not supported by this browser.");
+                    }
+
+                    console.log('Geolocate User Latitude: ' + marker.getPosition().lat() + '   User Longitude: ' + marker.getPosition().lng());
+                }
+                else
+                {
+                    console.log('Simulate User Latitude: ' + marker.getPosition().lat() + '   User Longitude: ' + marker.getPosition().lng());
+                }
+
+                marker.setPosition(userLocation);
+
+                if (!userIsDriver) {
+                    // Follow the user location of they are on board.
+                    if (passengerOnBoard) {
+                        map.setZoom(15);
+                        map.setCenter(userLocation);
+                    }
+                }
+            }, 5000);
+        }
+
+
+
+        /*
+        Function: simulateLocation()
+        Periodically call the controller to trigger a bus simulator update.
+        */
+        function simulateBusLocation() {
+            $.get("/Journey/SimulateBusLocation", { runId: @ViewBag.RunId, routeId: @ViewBag.RouteId }, function (response) {
+                console.log('Simulated Bus Latitude: ' + response.BusLatitude + '   Bus Longitude: ' + response.BusLongitude);
+            });
+        }
+
+
+        function simulateUserLocation() {
+            if (passengerOnBoard) {
+                userLocation = busLocation;
+            }
+        }
+
+        function startPassengerAction() {
+            passengerOnBoard = true;
+        }
+
+        function stopPassengerAction() {
+            passengerOnBoard = false;
+        }
+
+
+        function startBusAction() {
+            if (busSimulationEnabled == false) {
+                putBusInterval = setInterval(putBusLocation, 5000);
+            }
+        }
+
+        function stopBusAction() {
+            if (busSimulationEnabled == false) {
+                clearInterval(putBusInterval);
+            }
+        }
+
+
+
+        function putBusLocation() {
+            if("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    $.get("/Journey/PutBusLocation", { routeId: @ViewBag.RouteId, latitude: position.coords.latitude, longitude: position.coords.longitude }, function (response) {
+                        console.log('PUT Bus Latitude: ' + position.coords.latitude + '   Actual Longitude: ' + position.coords.longitude);
+                    });
+                });
+            }
+            else {
+                console.log("Unable to track bus, browser doesn't support geolocation.");
+            }
+        };
+
+
+        function updateDepartures() {
+            $.ajax({
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'text',
+                type: 'POST',
+                url: '/Journey/UpdateDepartures',
+                data: JSON.stringify({ 'routeId': @ViewBag.RouteId, 'runId': @ViewBag.RunId }),
+                success: function (response) {
+                    updateDeparturesCallback(response)
+                },
+                error: function (textStatus, errorThrown) {
+                    console.log('Error on UpdateDepartures Post');
+                }
+            });
+
+        }
+
+        function updateDeparturesCallback(response) {
+            departures = JSON.parse(response);
+
+            postJourneyDashboard();
+            postJourneyStops();
+        }
+
+
+    </script>
+}
